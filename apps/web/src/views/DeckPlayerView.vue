@@ -267,7 +267,7 @@ function updateScale() {
 
 function notifyReady() {
   if (window.parent !== window)
-    window.parent.postMessage({ type: 'interdeck:ready' }, window.location.origin)
+    window.parent.postMessage({ type: 'interdeck:ready', version: deck.value?.version }, window.location.origin)
 }
 
 function reportNavigation(commandId = '') {
@@ -275,6 +275,8 @@ function reportNavigation(commandId = '') {
   window.parent.postMessage({
     type: 'interdeck:navigation',
     slideNumber: slideNumber.value,
+    slideKey: deck.value?.slides[slideNumber.value - 1]?.key,
+    version: deck.value?.version,
     clickStep: clickStep.value,
     clicksTotal: rendered.value.clicksTotal,
     visibleElementInteractionIds: rendered.value.visibleElementInteractionIds,
@@ -290,7 +292,7 @@ function onCommand(event: MessageEvent) {
     const update = message.deck && typeof message.deck === 'object'
       ? applyDeck(message.deck as DeckDetail)
       : reloadDeck()
-    void update.catch(reason => {
+    void update.then(notifyReady).catch(reason => {
       error.value = reason instanceof Error ? reason.message : 'The updated deck could not be loaded'
     })
     return

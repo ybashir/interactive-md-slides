@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { parseSync } from '@slidev/parser'
 
 import {
   deleteOrganizedSlide,
   duplicateOrganizedSlide,
+  insertOrganizedSlide,
   listOrganizedSlides,
   reorderOrganizedSlides,
 } from './slide-organizer.mjs'
@@ -68,4 +70,32 @@ test('deletes non-title slides but protects deck headmatter', () => {
   assert.doesNotMatch(deleted, /interdeck-slide: vote/)
   assert.match(deleted, /interdeck-slide: welcome/)
   assert.match(deleted, /interdeck-slide: results/)
+})
+
+test('inserts after the title or a middle slide without changing existing frontmatter and content', () => {
+  for (const key of ['welcome', 'vote']) {
+    const inserted = insertOrganizedSlide(source, key)
+    const before = listOrganizedSlides(source)
+    const after = listOrganizedSlides(inserted.source)
+    assert.equal(after.findIndex(slide => slide.key === inserted.slideKey), before.findIndex(slide => slide.key === key) + 1)
+    for (const slide of before) {
+      const kept = after.find(candidate => candidate.key === slide.key)
+      assert.equal(inserted.source.slice(kept.blockStart, kept.blockEnd), source.slice(slide.blockStart, slide.blockEnd))
+    }
+    assert.ok(inserted.source.startsWith('---\ntheme: default\ntitle: Demo\n---'))
+    assert.equal(parseSync(inserted.source, 'slides.md').slides.length, 4)
+  }
+})
+
+test('adds after the last slide without a final newline and creates unique stable keys', () => {
+  let next = source.replace(/\n$/, '')
+  const keys = []
+  for (let i = 0; i < 3; i++) {
+    const inserted = insertOrganizedSlide(next, 'results')
+    keys.push(inserted.slideKey)
+    next = inserted.source
+  }
+  assert.equal(new Set(keys).size, 3)
+  assert.equal(parseSync(next, 'slides.md').slides.length, 6)
+  assert.deepEqual(insertOrganizedSlide(source, 'missing'), { source, slideKey: null })
 })

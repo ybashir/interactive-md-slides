@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { findCurrentSlideContent, findSlideNumberByKey, replaceCurrentSlideContent } from './current-slide-source.mjs'
+import { findCurrentSlideContent, findProposalSlide, findSlideNumberByKey, replaceCurrentSlideContent } from './current-slide-source.mjs'
 
 const deck = `---
 theme: default
@@ -69,4 +69,21 @@ test('clamps an out-of-range slide number to the final stable slide', () => {
 test('finds a focused slide by its stable key', () => {
   assert.equal(findSlideNumberByKey(deck, 'centered'), 2)
   assert.equal(findSlideNumberByKey(deck, 'missing'), null)
+})
+
+test('focuses an added slide when the assistant omits focus or points to an existing slide', () => {
+  const proposed = deck.replace('<!-- interdeck-slide: final -->', '<!-- interdeck-slide: added -->\n# Added\n\n---\n\n<!-- interdeck-slide: final -->')
+  for (const preferred of [undefined, 'centered', 'missing'])
+    assert.deepEqual(findProposalSlide(deck, proposed, preferred, 2), { slideKey: 'added', slideNumber: 3 })
+})
+
+test('honors a chosen new slide when adding several and preserves focus for ordinary edits', () => {
+  const proposed = `${deck}\n---\n\n<!-- interdeck-slide: first-new -->\n# New\n\n---\n\n<!-- interdeck-slide: second-new -->\n# New too\n`
+  assert.deepEqual(findProposalSlide(deck, proposed, 'second-new', 1), { slideKey: 'second-new', slideNumber: 5 })
+  assert.deepEqual(findProposalSlide(deck, deck.replace('# Centered', '# Edited'), undefined, 2), { slideKey: 'centered', slideNumber: 2 })
+})
+
+test('falls back to an existing nearby slide if a proposal removes the current one', () => {
+  const proposed = deck.slice(0, deck.indexOf('\n---\n\n<!-- interdeck-slide: final -->'))
+  assert.deepEqual(findProposalSlide(deck, proposed, 'missing', 3), { slideKey: 'centered', slideNumber: 2 })
 })

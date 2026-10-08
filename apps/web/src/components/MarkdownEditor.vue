@@ -135,6 +135,14 @@ function getContext() {
   }
 }
 
+function revealLine(lineNumber: number) {
+  if (!instance || !model) return
+  const line = Math.max(1, Math.min(model.getLineCount(), lineNumber))
+  instance.setPosition({ lineNumber: line, column: 1 })
+  instance.revealLineInCenter(line)
+  instance.focus()
+}
+
 function applyDiagnostics(diagnostics: SourceDiagnostic[] = []) {
   if (!model) return
   monaco.editor.setModelMarkers(model, 'interdeck', diagnostics.map(diagnostic => ({
@@ -147,7 +155,7 @@ function applyDiagnostics(diagnostics: SourceDiagnostic[] = []) {
   })))
 }
 
-defineExpose({ insertText, replaceAll, syncValue, getContext })
+defineExpose({ insertText, replaceAll, syncValue, getContext, revealLine })
 </script>
 
 <template>
