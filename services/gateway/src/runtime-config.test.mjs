@@ -11,3 +11,13 @@ test('production rejects unset, short, reused, or predictable service keys', () 
   assert.equal(runtimeConfig({ APP_ENV: 'production', INTERNAL_SERVICE_TOKEN: key, SLIDEV_TOKEN_SECRET: key.split('').reverse().join('') }).appEnv, 'production')
   assert.equal(runtimeConfig({}).appEnv, 'development')
 })
+
+test('proxy trust and request limits require explicit bounded configuration', () => {
+  assert.equal(runtimeConfig({}).trustProxy, 0)
+  assert.equal(runtimeConfig({ GATEWAY_TRUST_PROXY: '1' }).trustProxy, 1)
+  for (const value of ['true', '-1', '6', '1.5', 'anything'])
+    assert.throws(() => runtimeConfig({ GATEWAY_TRUST_PROXY: value }))
+  for (const value of ['-1', '0', '1.5', 'Infinity', 'NaN'])
+    assert.throws(() => runtimeConfig({ GATEWAY_SOURCE_REQUESTS_PER_MINUTE: value }))
+  assert.equal(runtimeConfig({ GATEWAY_SOURCE_REQUESTS_PER_MINUTE: '120' }).requestLimits.source, 120)
+})

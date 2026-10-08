@@ -39,7 +39,7 @@ The public Node gateway serves the Vue app and proxies API/SSE requests. A priva
 A single-host deployment is provided in [compose.production.yml](compose.production.yml):
 
 1. Set `APP_BASE_URL=https://slides.example.org`, your Google credentials and access policy, and a random hexadecimal `POSTGRES_PASSWORD` in `.env`. Register `https://slides.example.org/api/auth/google/callback` with Google. Keep `INTERNAL_SERVICE_TOKEN` and `SLIDEV_TOKEN_SECRET` independent random values of at least 32 printable characters; `npm run setup` generates suitable values for new installs.
-2. Put an HTTPS reverse proxy in front of `127.0.0.1:3000`. Preserve the public Host, forward WebSocket upgrades, and disable buffering/timeouts that terminate long-lived SSE. The Compose file publishes only the gateway to loopback; PostgreSQL and the API have no published ports.
+2. Put an HTTPS reverse proxy in front of `127.0.0.1:3000`. Preserve the public Host, forward WebSocket upgrades, and disable buffering/timeouts that terminate long-lived SSE. The Compose file publishes only the gateway to loopback; PostgreSQL and the API have no published ports. Its default trusts exactly one proxy hop for client-IP rate limits. The proxy must overwrite or append the real client IP to `X-Forwarded-For`; set `GATEWAY_TRUST_PROXY` only for a fixed trusted chain. Direct development traffic defaults to zero trusted hops.
 3. Run `docker compose -f compose.production.yml up -d --build`. Use `docker compose -f compose.production.yml ps` to check health. Migrations run automatically on API startup. Back up before upgrading.
 
 The Compose setup persists PostgreSQL and assets in named volumes and supports one API replica. For multiple API replicas, use a shared private S3-compatible bucket and set all `ASSET_S3_*` values from [.env.example](.env.example); leave `ASSET_STORAGE` empty. Local volume storage must be backed up with the database. Container-local files are not durable storage.
@@ -49,6 +49,8 @@ Choose an audience data policy before inviting users. `AUDIENCE_DATA_RETENTION_D
 Optional AI keys belong only on the API. `GEMINI_MODERATOR_KEY` enables Q&A analysis; `AI_MODERATION_MODE=assist` keeps decisions manual, while `enforce` may approve/reject pending questions with human overrides. `GEMINI_ASSISTANT_KEY` enables the authoring assistant. Q&A text and context, or assistant messages and deck content, are sent to Google when those features are used. The default model is `gemini-3.7-flash`; choose an available model from [Google's model catalog](https://ai.google.dev/gemini-api/docs/models) and review the provider's data policy for your account.
 
 See [operations](ops/README.md) for backups, restore drills, monitoring, incident recovery, and upgrades.
+
+The gateway applies per-client-IP limits per minute: 60 sign-in requests, 60 source-validation requests, 5,000 export requests, and 20,000 static-file requests. Use the `GATEWAY_*_REQUESTS_PER_MINUTE` settings in [.env.example](.env.example) to tune them for your deployment, including shared networks. Limits are local to each gateway replica; audience response limits are also enforced by the API. Keep any additional gateway replicas behind your trusted proxy or edge rate limiter.
 
 ## Interaction Markdown
 
@@ -210,6 +212,8 @@ Dependency auditing includes development dependencies. Two upstream packages cur
 ## Contributing and security
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+See [security analysis](docs/security-analysis.md) for the CodeQL findings, fixes, and narrowly documented triage decisions.
 
 Keep credentials, real customer decks, participant data, and infrastructure logs outside Git. `.env*`, `.private/`, and generated artifacts are ignored by Git and Docker. Contributed samples must be fictional or public and include redistribution rights for every bundled asset.
 
