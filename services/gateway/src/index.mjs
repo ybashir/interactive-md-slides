@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 
 import dotenv from 'dotenv'
+import escapeHtml from 'escape-html'
 import express from 'express'
 import { rateLimit } from 'express-rate-limit'
 import httpProxy from 'http-proxy'
@@ -62,7 +63,7 @@ const slidev = new SlidevManager({
 })
 
 proxy.on('error', (error, request, response) => {
-  console.error('Proxy error', error)
+  console.error('Proxy error', JSON.stringify({ message: error.message, code: error.code }))
   if (response && 'writeHead' in response && !response.headersSent) {
     response.writeHead(502, { 'content-type': 'application/json' })
     response.end(JSON.stringify({ error: { code: 'proxy_error', message: 'The upstream service is unavailable' } }))
@@ -181,7 +182,7 @@ app.post('/_gateway/slidev/preflight', express.json({ limit: '16kb' }), async (r
         version: buildContext?.version,
       })
     }
-    console.error('Slidev preflight failed', error)
+    console.error('Slidev preflight failed', JSON.stringify({ message: error.message, code: error.code }))
     const shouldRecordFailure = buildContext
       && !compileSucceeded
       && error.statusCode !== 503
@@ -199,7 +200,7 @@ app.post('/_gateway/slidev/preflight', express.json({ limit: '16kb' }), async (r
         })
       }
       catch (recordError) {
-        console.error('Could not persist failed Slidev build', recordError)
+        console.error('Could not persist failed Slidev build', JSON.stringify({ message: recordError.message, code: recordError.code }))
       }
     }
     response.status(error.statusCode || 422).json({
@@ -329,7 +330,7 @@ app.use('/slidev', exportLimiter, async (request, response) => {
     proxy.web(request, response, { target: target.target })
   }
   catch (error) {
-    console.error('Slidev request failed', error)
+    console.error('Slidev request failed', JSON.stringify({ message: error.message, code: error.code }))
     if (!response.headersSent) {
       if (error.statusCode === 401)
         response.status(401).send('Slide access expired')
@@ -340,8 +341,9 @@ app.use('/slidev', exportLimiter, async (request, response) => {
 })
 
 if (existsSync(webDist)) {
-  app.use(staticLimiter, express.static(webDist, { index: false, maxAge: process.env.APP_ENV === 'production' ? '1h' : 0 }))
-  app.get('*splat', (request, response, next) => {
+  // Keep assets and SPA fallback in one explicitly limited route, so a request
+  // consumes one quota entry regardless of whether a file exists.
+  app.get('/{*splat}', staticLimiter, express.static(webDist, { index: false, maxAge: appEnv === 'production' ? '1h' : 0 }), (request, response, next) => {
     if (request.path.startsWith('/api/') || request.path.startsWith('/slidev/')) return next()
     response.sendFile(join(webDist, 'index.html'))
   })
@@ -369,11 +371,11 @@ server.on('upgrade', async (request, socket, head) => {
   }
   catch (error) {
     const pathname = request.url ? new URL(request.url, 'http://gateway.local').pathname : 'unknown'
-    console.error('Slidev WebSocket upgrade failed', {
+    console.error('Slidev WebSocket upgrade failed', JSON.stringify({
       path: pathname,
       code: error?.code || 'slidev_websocket_upgrade_failed',
       message: error instanceof Error ? error.message : String(error),
-    })
+    }))
     socket.destroy()
   }
 })
@@ -460,15 +462,6 @@ function renderSlidevError(message) {
 </head>
 <body><main><small>SLIDEV COMPATIBILITY CHECK</small><h1>Preview unavailable</h1><p>${detail}</p></main></body>
 </html>`
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
 }
 
 function shutdown() {

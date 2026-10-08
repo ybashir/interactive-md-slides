@@ -4,6 +4,8 @@ The public repository runs CodeQL's extended security suites for JavaScript/Type
 
 The first scan identified missing gateway request limits. The gateway now uses `express-rate-limit` before sign-in/source handlers, export authentication, and static-file access. Its client-IP policy defaults to no proxy trust for direct traffic; production Compose trusts exactly one HTTPS proxy behind a loopback-only published port. Configure a fixed trusted chain and per-route limits for each deployment. A real-gateway regression verifies 429 responses, retry headers, resistance to spoofed forwarding headers, and access-token validation. Query and cookie export credentials share one verification step before redirecting or proxying.
 
+Default-branch analysis also identified compiler diagnostics flowing into HTML responses and logs. The gateway now uses the `escape-html` library at the HTML boundary and JSON serialization for error logs. A hostile theme name containing markup and a newline passes through the real gateway regression: its markup stays escaped and it cannot forge another log entry. Static assets and the SPA fallback share one explicitly limited GET/HEAD route, avoiding both an implicit middleware assumption and double-counted requests.
+
 Four initial findings require narrow, evidence-backed dismissals:
 
 | Query | Location | Review |

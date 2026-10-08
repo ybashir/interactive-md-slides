@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
+import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -12,11 +13,23 @@ import getPort from 'get-port'
 test('real gateway limits costly routes and verifies every export credential', { timeout: 20000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'interdeck-gateway-boundaries-'))
   await writeFile(join(root, 'index.html'), '<!doctype html><title>Fixture</title>')
+  await writeFile(join(root, 'asset.txt'), 'Static fixture')
+  const maliciousTheme = '<script>window.__interdeckXss = true</script>\nFORGED_LOG_ENTRY'
+  const upstream = createServer((request, response) => {
+    if (!request.url.startsWith('/internal/decks/')) {
+      response.writeHead(502).end()
+      return
+    }
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ markdown: `---\ntheme: ${JSON.stringify(maliciousTheme)}\n---\n# Fixture`, join_url: 'https://example.invalid/j/FIXTURE' }))
+  })
+  upstream.listen(0, '127.0.0.1')
+  await once(upstream, 'listening')
   const port = await getPort({ host: '127.0.0.1' })
   const base = `http://127.0.0.1:${port}`
   const secret = 'development-slidev-token-secret'
   const child = spawn(process.execPath, [fileURLToPath(new URL('./index.mjs', import.meta.url))], {
-    env: { ...process.env, APP_ENV: 'test', PORT: String(port), GATEWAY_BIND_ADDR: '127.0.0.1', GATEWAY_TRUST_PROXY: '0', INTERNAL_API_BASE: 'http://127.0.0.1:9', INTERNAL_SERVICE_TOKEN: 'development-internal-token', SLIDEV_TOKEN_SECRET: secret, WEB_DIST_DIR: root, GATEWAY_AUTH_REQUESTS_PER_MINUTE: '2', GATEWAY_SOURCE_REQUESTS_PER_MINUTE: '2', GATEWAY_STATIC_REQUESTS_PER_MINUTE: '2', GATEWAY_EXPORT_REQUESTS_PER_MINUTE: '20' },
+    env: { ...process.env, APP_ENV: 'test', PORT: String(port), GATEWAY_BIND_ADDR: '127.0.0.1', GATEWAY_TRUST_PROXY: '0', INTERNAL_API_BASE: `http://127.0.0.1:${upstream.address().port}`, INTERNAL_SERVICE_TOKEN: 'development-internal-token', SLIDEV_TOKEN_SECRET: secret, WEB_DIST_DIR: root, GATEWAY_AUTH_REQUESTS_PER_MINUTE: '2', GATEWAY_SOURCE_REQUESTS_PER_MINUTE: '2', GATEWAY_STATIC_REQUESTS_PER_MINUTE: '2', GATEWAY_EXPORT_REQUESTS_PER_MINUTE: '20' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let output = ''
@@ -32,11 +45,12 @@ test('real gateway limits costly routes and verifies every export credential', {
     assert.ok(ready, output)
     for (let attempt = 0; attempt < 3; attempt++) {
       const forwarded = { 'x-forwarded-for': `192.0.2.${attempt + 1}` }
-      const staticResponse = await fetch(base, { headers: forwarded })
+      const staticResponse = await fetch(`${base}${['/asset.txt', '/deep/link', '/'][attempt]}`, { headers: forwarded })
       const sourceResponse = await fetch(`${base}/_gateway/slidev/preflight`, { method: 'POST', headers: { ...forwarded, 'content-type': 'application/json' }, body: JSON.stringify({ deck_id: '00000000-0000-4000-8000-000000000001', access: 'forged' }) })
       const authResponse = await fetch(`${base}/api/auth/google/start`, { headers: forwarded })
       if (attempt < 2) {
         assert.equal(staticResponse.status, 200)
+        assert.equal(await staticResponse.text(), attempt === 0 ? 'Static fixture' : '<!doctype html><title>Fixture</title>')
         assert.equal(sourceResponse.status, 401)
         assert.equal(authResponse.status, 502)
       } else {
@@ -56,8 +70,17 @@ test('real gateway limits costly routes and verifies every export credential', {
     assert.equal(accepted.status, 302)
     assert.equal(accepted.headers.get('location'), path)
     assert.match(accepted.headers.get('set-cookie'), /interdeck_slidev=.*HttpOnly/)
+    const invalidDeck = await fetch(`${base}${path}`, { headers: { cookie: `interdeck_slidev=${signed}` } })
+    assert.equal(invalidDeck.status, 422)
+    const errorHtml = await invalidDeck.text()
+    assert.ok(errorHtml.includes('&lt;script&gt;window.__interdeckXss = true&lt;/script&gt;'))
+    assert.ok(!errorHtml.includes('<script>'), 'compatibility diagnostics must be escaped in the HTML response')
+    const errorLog = output.split('\n').find(line => line.startsWith('Slidev request failed ') && line.includes('FORGED_LOG_ENTRY'))
+    assert.ok(errorLog, 'the gateway must record the compatibility failure')
+    assert.equal(JSON.parse(errorLog.slice('Slidev request failed '.length)).code, 'unsupported_theme')
+    assert.ok(!output.split('\n').some(line => line.startsWith('FORGED_LOG_ENTRY')), 'newlines in deck data must not forge a log entry')
     assert.equal((await fetch(`${base}${path}`, { redirect: 'manual' })).status, 401)
-    for (let request = 0; request < 17; request++)
+    for (let request = 0; request < 16; request++)
       assert.equal((await fetch(`${base}${path}`)).status, 401)
     assert.equal((await fetch(`${base}${path}`)).status, 429)
   } finally {
@@ -68,6 +91,7 @@ test('real gateway limits costly routes and verifies every export credential', {
       await exited
       clearTimeout(deadline)
     }
+    await new Promise((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()))
     await rm(root, { recursive: true, force: true })
   }
 })
