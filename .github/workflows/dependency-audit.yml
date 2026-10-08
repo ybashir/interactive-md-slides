@@ -1,0 +1,25 @@
+name: Dependency audit
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '40 4 * * 1'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.21.0'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: '1.88.0'
+      - run: npm ci
+      - run: npm run audit:dependencies
+      - run: cargo install cargo-audit --locked --version 0.22.2
+      - run: npm run audit:rust

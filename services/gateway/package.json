@@ -1,0 +1,33 @@
+{
+  "name": "@interdeck/gateway",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.mjs",
+    "start": "node src/index.mjs",
+    "build": "node --check src/index.mjs && node --check src/slidev-manager.mjs && node --check src/slidev-catalog.mjs && node --check src/transform.mjs",
+    "test": "node --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "@slidev/cli": "52.19.1",
+    "@slidev/parser": "52.19.1",
+    "@slidev/theme-apple-basic": "0.25.1",
+    "@slidev/theme-bricks": "0.25.0",
+    "@slidev/theme-default": "0.25.0",
+    "@slidev/theme-seriph": "0.25.0",
+    "@slidev/theme-shibainu": "0.25.0",
+    "dotenv": "16.6.1",
+    "echarts": "^6.1.0",
+    "express": "5.2.1",
+    "get-port": "7.1.0",
+    "http-proxy": "1.18.1",
+    "qrcode.vue": "3.10.0",
+    "vuewordcloud": "^19.0.0",
+    "yaml": "2.9.0"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  }
+}

@@ -1,0 +1,33 @@
+# Local secrets
+.private/
+.env
+.env.*
+!.env.example
+
+# JavaScript
+node_modules/
+dist/
+.vite/
+.npm/
+*.tsbuildinfo
+
+# Rust
+target/
+
+# Slidev and generated artifacts
+.slidev/
+.interdeck/
+exports/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Logs and coverage
+*.log
+coverage/
+
+# Browser test artifacts
+playwright-report/
+test-results/

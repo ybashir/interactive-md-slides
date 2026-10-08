@@ -1,0 +1,102 @@
+/* Amazing Sea Creatures — a self-contained Interdeck showcase theme. */
+:root {
+  --slidev-theme-primary: #0ea5c6;
+  --sea-ink: #10243a;
+  --sea-muted: #5c7184;
+  --sea-cyan: #19b8d4;
+  --sea-blue: #2563eb;
+  --sea-deep: #071c33;
+  --sea-foam: #e7f8f7;
+  --sea-coral: #ff7f68;
+  --sea-sand: #fffaf0;
+}
+
+.slidev-layout {
+  color: var(--sea-ink);
+  background:
+    radial-gradient(circle at 92% 8%, rgba(25, 184, 212, 0.12), transparent 30%),
+    linear-gradient(145deg, #ffffff 0%, #f4fbfc 100%);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  box-shadow: inset 0 0.34rem 0 var(--sea-cyan);
+}
+
+.slidev-layout h1,
+.slidev-layout h2,
+.slidev-layout h3 {
+  color: var(--sea-ink);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.slidev-layout h1 { font-size: 3rem; }
+.slidev-layout h2 { color: var(--sea-muted); }
+.slidev-layout strong { color: var(--sea-blue); }
+.slidev-layout li::marker { color: var(--sea-cyan); }
+
+.sea-kicker {
+  margin-bottom: 0.8rem;
+  color: var(--sea-cyan);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+}
+
+.sea-cover,
+.sea-photo-statement {
+  position: relative;
+  color: white;
+  background-color: var(--sea-deep);
+  box-shadow: none;
+  isolation: isolate;
+}
+
+.sea-cover::before,
+.sea-photo-statement::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: linear-gradient(90deg, rgba(2, 17, 34, 0.92) 0%, rgba(2, 17, 34, 0.7) 44%, rgba(2, 17, 34, 0.08) 78%);
+}
+
+.sea-cover { justify-content: center; padding-right: 48%; }
+.sea-cover h1 { max-width: 620px; margin-bottom: 0.55rem; color: white; font-size: 4rem; line-height: 0.95; }
+.sea-cover h2 { max-width: 560px; margin-bottom: 1rem; color: rgba(255,255,255,0.82); font-size: 1.2rem; font-weight: 520; line-height: 1.35; letter-spacing: -0.02em; }
+.sea-cover .universal-audience-qr { color: white; transform: scale(0.7); transform-origin: left center; }
+
+.ocean-fact { background: radial-gradient(circle at 50% 45%, #dff8fb, #ffffff 62%); }
+.ocean-fact h1 { margin: 0; color: var(--sea-blue); font-size: 6.2rem; line-height: 0.9; }
+.ocean-fact h2 { color: var(--sea-ink); font-size: 1.65rem; }
+.ocean-fact p { max-width: 650px; margin: 1.2rem auto 0; color: var(--sea-muted); font-size: 1.05rem; }
+
+.creature-profile .layout-columns { align-items: center; }
+.creature-profile ul { padding-left: 1.1em; font-size: 1.05rem; line-height: 1.5; }
+.creature-profile li { margin-bottom: 0.75rem; }
+.sea-photo-card { margin: 0; border: 0.35rem solid white; border-radius: 1.2rem; background: white; box-shadow: 0 1.3rem 3rem rgba(7, 28, 51, 0.2); overflow: hidden; transform: rotate(1.5deg); }
+.sea-photo-card img { display: block; width: 100%; height: 310px; object-fit: cover; }
+.sea-photo-card figcaption { padding: 0.55rem 0.7rem; color: var(--sea-muted); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.sea-photo-statement { align-items: flex-start; padding-right: 48%; text-align: left; }
+.sea-photo-statement::before { background: linear-gradient(90deg, rgba(1, 8, 26, 0.94), rgba(1, 8, 26, 0.68) 48%, rgba(1, 8, 26, 0.1)); }
+.sea-photo-statement h1 { max-width: 540px; color: white; font-size: 3.35rem; }
+.sea-photo-statement p { max-width: 520px; color: rgba(255,255,255,0.78); font-size: 0.96rem; }
+
+.interaction-stage { background: linear-gradient(145deg, var(--sea-sand), #f0fbfc); }
+.interaction-stage > h1 { margin-bottom: 0.8rem; color: var(--sea-blue); }
+.interaction-stage .universal-interaction { border-color: rgba(14, 165, 198, 0.22); background: rgba(255,255,255,0.64); box-shadow: 0 1.1rem 2.8rem rgba(16, 36, 58, 0.08); }
+
+.cloud-expedition .layout-columns { align-items: center; gap: 2rem; }
+.cloud-expedition .layout-columns > div:last-child { padding: 0.45rem; border: 1px solid rgba(14,165,198,0.2); border-radius: 1.2rem; background: rgba(255,255,255,0.64); box-shadow: 0 1rem 2.6rem rgba(16,36,58,0.08); }
+.sea-tip { padding: 0.8rem 0.95rem; margin-top: 1.4rem; border-left: 0.28rem solid var(--sea-coral); border-radius: 0 0.65rem 0.65rem 0; color: var(--sea-muted); background: rgba(255,127,104,0.08); font-size: 0.72rem; line-height: 1.5; }
+
+.hotspot-stage .universal-interaction img { max-height: 310px; border-radius: 0.8rem; }
+.chart-expedition .layout-columns { align-items: center; grid-template-columns: 0.72fr 1.28fr; gap: 1.5rem; }
+.chart-expedition ul { font-size: 0.88rem; }
+.chart-expedition .universal-chart { padding: 0.5rem; border-radius: 1rem; background: rgba(255,255,255,0.72); box-shadow: 0 1rem 2.5rem rgba(16,36,58,0.08); }
+
+.qa-expedition,
+.summary-expedition { background: linear-gradient(160deg, #f7ffff, #edf7ff); }
+.qa-expedition > h1,
+.summary-expedition > h1 { color: var(--sea-blue); }
+

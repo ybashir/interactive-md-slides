@@ -1,0 +1,15 @@
+.private
+.env
+.env.*
+!.env.example
+.git
+.github
+.interdeck
+node_modules
+target
+**/dist
+coverage
+*.log
+
+playwright-report
+test-results

@@ -1,0 +1,29 @@
+FROM node:24.21.0-bookworm-slim
+
+WORKDIR /app
+
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/interdeck/
+
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY services/gateway/package.json services/gateway/package.json
+COPY scripts/patch-dependencies.mjs scripts/dependency-patches.json scripts/
+COPY scripts/browser-notices.mjs scripts/browser-notices.d.mts scripts/
+RUN npm ci
+
+COPY apps/web apps/web
+COPY services/gateway services/gateway
+RUN npm run build:web \
+    && cp /usr/share/licenses/interdeck/LICENSE /app/apps/web/dist/LICENSE.txt \
+    && cp /usr/share/licenses/interdeck/THIRD_PARTY_NOTICES.md /app/apps/web/dist/THIRD_PARTY_NOTICES.txt
+
+RUN mkdir -p /app/.interdeck \
+    && chown node:node /app/.interdeck
+
+ENV NODE_ENV=production
+ENV APP_ENV=production
+ENV WEB_DIST_DIR=/app/apps/web/dist
+USER node
+HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:3000/_gateway/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+EXPOSE 3000
+CMD ["npm", "run", "start", "--workspace", "@interdeck/gateway"]

@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible problem using sanitized data.
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, use SECURITY.md. Do not attach credentials, private decks, participant data, or production logs."
+  - type: input
+    id: version
+    attributes:
+      label: Version and environment
+      description: Commit/release, browser, Node/Rust versions, and deployment type.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal fictional deck if useful.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true

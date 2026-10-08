@@ -1,0 +1,3 @@
+ALTER TABLE decks
+    ADD COLUMN draft_version BIGINT NOT NULL DEFAULT 1;
+

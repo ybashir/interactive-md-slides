@@ -1,0 +1,67 @@
+# Single-host deployment. Terminate HTTPS at your reverse proxy and forward to
+# 127.0.0.1:3000. Only the gateway is published; API and PostgreSQL stay private.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: interdeck
+      POSTGRES_USER: interdeck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U interdeck -d interdeck]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres:/var/lib/postgresql/data
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      APP_BASE_URL: ${APP_BASE_URL:?Set the public HTTPS origin}
+      API_BIND_ADDR: 0.0.0.0:8080
+      DATABASE_URL: postgresql://interdeck:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/interdeck
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
+      GOOGLE_WORKSPACE_DOMAIN: ${GOOGLE_WORKSPACE_DOMAIN:-}
+      GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Run npm run setup}
+      SLIDEV_TOKEN_SECRET: ${SLIDEV_TOKEN_SECRET:?Run npm run setup}
+      ASSET_STORAGE: local
+      ASSET_LOCAL_DIR: /data/assets
+      AUDIENCE_DATA_RETENTION_DAYS: ${AUDIENCE_DATA_RETENTION_DAYS:-0}
+      GEMINI_MODERATOR_KEY: ${GEMINI_MODERATOR_KEY:-}
+      GEMINI_MODERATOR_MODEL: ${GEMINI_MODERATOR_MODEL:-gemini-3.7-flash}
+      GEMINI_ASSISTANT_KEY: ${GEMINI_ASSISTANT_KEY:-}
+      GEMINI_SLIDE_MODEL: ${GEMINI_SLIDE_MODEL:-gemini-3.7-flash}
+      AI_MODERATION_MODE: ${AI_MODERATION_MODE:-assist}
+      RUST_LOG: interdeck=info,tower_http=info
+    volumes:
+      - assets:/data/assets
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      PORT: 3000
+      INTERNAL_API_BASE: http://app:8080
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Run npm run setup}
+      SLIDEV_TOKEN_SECRET: ${SLIDEV_TOKEN_SECRET:?Run npm run setup}
+      SLIDEV_MAX_SERVERS: ${SLIDEV_MAX_SERVERS:-4}
+    ports:
+      - 127.0.0.1:3000:3000
+volumes:
+  postgres:
+  assets:

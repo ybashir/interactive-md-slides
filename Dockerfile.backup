@@ -1,0 +1,9 @@
+FROM postgres:17-alpine
+
+RUN apk add --no-cache aws-cli
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/interdeck/
+COPY ops/backup.sh /usr/local/bin/interdeck-backup
+RUN chmod 0555 /usr/local/bin/interdeck-backup
+
+USER postgres
+ENTRYPOINT ["/usr/local/bin/interdeck-backup"]

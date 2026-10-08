@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Interdeck">
+  <rect x="11" y="11" width="47" height="47" rx="11" fill="#d8d1ff"/>
+  <rect x="5" y="5" width="47" height="47" rx="11" fill="#6755d9"/>
+  <path fill="#fff" d="M19 17h19v6h-6.5v17H38v6H19v-6h6.5V23H19z"/>
+</svg>

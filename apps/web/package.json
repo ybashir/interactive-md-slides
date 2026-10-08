@@ -1,0 +1,33 @@
+{
+  "name": "@interdeck/web",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "@slidev/parser": "52.19.1",
+    "dompurify": "3.4.16",
+    "echarts": "^6.1.0",
+    "markdown-it": "14.3.2",
+    "monaco-editor": "^0.56.0",
+    "qrcode.vue": "3.10.0",
+    "vue": "3.5.43",
+    "vue-router": "4.6.3",
+    "vuewordcloud": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.2.4",
+    "typescript": "5.9.3",
+    "vite": "6.4.4",
+    "vue-tsc": "3.1.5"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  }
+}

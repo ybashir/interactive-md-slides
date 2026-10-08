@@ -1,0 +1,53 @@
+{
+  "name": "interdeck",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "workspaces": [
+    "apps/web",
+    "services/gateway"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/patch-dependencies.mjs",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs",
+    "test:security-patches": "node --test scripts/security-patches.test.mjs",
+    "build": "npm run build:web && npm run build:gateway",
+    "build:web": "npm run build --workspace @interdeck/web",
+    "build:gateway": "npm run build --workspace @interdeck/gateway",
+    "check:scripts": "node --check scripts/smoke-security.mjs && node --check scripts/smoke-export-isolation.mjs && node --check scripts/load-audience.mjs && node --check scripts/rehearsal-audience.mjs && node --check scripts/seed-load-fixture.mjs && node --check scripts/smoke-slidev-lifecycle.mjs && node --check scripts/smoke-interaction-locks.mjs && node --check scripts/smoke-cross-replica.mjs",
+    "check:slidev-compatibility": "node scripts/check-slidev-compatibility.mjs",
+    "check:ops": "sh -n ops/backup.sh && sh -n ops/restore-drill.sh",
+    "dev": "concurrently -n api,gateway,web -c blue,magenta,green \"cargo run --manifest-path services/app/Cargo.toml\" \"npm run dev --workspace @interdeck/gateway\" \"npm run dev --workspace @interdeck/web\"",
+    "load:audience": "node scripts/load-audience.mjs",
+    "load:seed": "node scripts/seed-load-fixture.mjs",
+    "rehearse:audience": "node scripts/rehearsal-audience.mjs",
+    "smoke:interaction-locks": "node scripts/smoke-interaction-locks.mjs",
+    "smoke:cross-replica": "node scripts/smoke-cross-replica.mjs",
+    "smoke:slidev-lifecycle": "node scripts/smoke-slidev-lifecycle.mjs",
+    "smoke:export-isolation": "node scripts/smoke-export-isolation.mjs",
+    "smoke:security": "node scripts/smoke-security.mjs",
+    "test": "npm run test:security-patches && npm run test --workspace @interdeck/web && npm run test --workspace @interdeck/gateway && cargo test --manifest-path services/app/Cargo.toml",
+    "check": "npm run build && npm run check:scripts && npm run check:ops && cargo check --manifest-path services/app/Cargo.toml",
+    "audit:rust": "node scripts/audit-rust.mjs",
+    "setup": "node scripts/setup.mjs",
+    "test:browser": "playwright test",
+    "release:prepare": "node scripts/prepare-public-release.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  },
+  "overrides": {
+    "dompurify": "3.4.16",
+    "monaco-editor": {
+      "dompurify": "3.4.16"
+    },
+    "image-size": "2.0.4",
+    "shell-quote": "1.12.0",
+    "katex": "0.19.0"
+  }
+}

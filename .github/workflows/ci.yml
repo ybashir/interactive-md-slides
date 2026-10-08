@@ -1,0 +1,89 @@
+name: Interdeck CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: interdeck-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: interdeck
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['55432:5432']
+        options: --health-cmd "pg_isready -U postgres -d interdeck" --health-interval 3s --health-timeout 3s --health-retries 10
+    env:
+      APP_ENV: test
+      APP_BASE_URL: http://127.0.0.1:3000
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/interdeck
+      GOOGLE_CLIENT_ID: ci-dummy
+      GOOGLE_CLIENT_SECRET: ci-dummy
+      GOOGLE_ALLOWED_EMAILS: ci@example.invalid
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.21.0'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: '1.88.0'
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: services/app
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: cargo fmt --manifest-path services/app/Cargo.toml --check
+      - run: cargo clippy --manifest-path services/app/Cargo.toml --all-targets -- -D warnings
+      - run: npm test
+      - run: npm run check
+      - run: npm run check:slidev-compatibility
+      - run: npm run smoke:slidev-lifecycle
+      - run: npm run smoke:export-isolation
+      - name: Durable cleanup regressions
+        run: cargo test --manifest-path services/app/Cargo.toml maintenance::tests::database_cleanup -- --ignored
+        env:
+          INTERDECK_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/interdeck
+      - name: Database and cross-replica regressions
+        shell: bash
+        run: |
+          cargo build --manifest-path services/app/Cargo.toml --locked
+          API_BIND_ADDR=127.0.0.1:8080 services/app/target/debug/interdeck-app > /tmp/api-a.log 2>&1 &
+          api_a=$!
+          API_BIND_ADDR=127.0.0.1:8081 services/app/target/debug/interdeck-app > /tmp/api-b.log 2>&1 &
+          api_b=$!
+          PORT=3000 INTERNAL_API_BASE=http://127.0.0.1:8080 node services/gateway/src/index.mjs > /tmp/gateway.log 2>&1 &
+          gateway=$!
+          trap 'kill "$api_a" "$api_b" "$gateway"' EXIT
+          for port in 8080 8081; do
+            for attempt in $(seq 1 60); do
+              if curl --fail --silent "http://127.0.0.1:$port/health/ready" > /dev/null; then break; fi
+              sleep 1
+            done
+            curl --fail --silent "http://127.0.0.1:$port/health/ready" > /dev/null
+          done
+          curl --fail --silent http://127.0.0.1:3000/_gateway/health > /dev/null
+          npm run test:browser
+          npm run smoke:security
+          npm run smoke:interaction-locks
+          npm run smoke:cross-replica -- --writer-url=http://127.0.0.1:8080 --listener-url=http://127.0.0.1:8081
+      - run: npm run audit:dependencies
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [app, gateway, backup]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - run: docker build -f Dockerfile.${{ matrix.service }} -t interdeck-${{ matrix.service }}:ci .
