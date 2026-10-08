@@ -21,6 +21,7 @@
     "dotenv": "16.6.1",
     "echarts": "^6.1.0",
     "express": "5.2.1",
+    "express-rate-limit": "8.7.1",
     "get-port": "7.1.0",
     "http-proxy": "1.18.1",
     "qrcode.vue": "3.10.0",

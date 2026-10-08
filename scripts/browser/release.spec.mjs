@@ -53,6 +53,31 @@ test('creator dashboard and editor load a verified deck', async ({ page, context
   await accessibility(page)
 })
 
+test('the browser player sanitizes malformed nested tags and event handlers', async ({ page, request, context, baseURL }) => {
+  await context.addCookies([{ name: 'interdeck_session', value: token, url: baseURL, httpOnly: true, sameSite: 'Lax' }])
+  const response = await request.post('/api/decks', { headers, data: {
+    title: 'Sanitization fixture',
+    markdown: `# <b>Sanitization fixture</b> <scr<script>ipt>window.__interdeckXss = true</script>
+
+<img src="/missing-fixture-image" onerror="window.__interdeckXss = true">
+<svg onload="window.__interdeckXss = true"><g></g></svg>
+<sty<style>le>body { color: red; }</style>
+<style scoped>.slidev-layout h1 { color: rgb(10, 20, 30); }</style>
+`,
+  } })
+  expect(response.ok()).toBeTruthy()
+  const fixture = await response.json()
+  try {
+    await page.goto(`/decks/${fixture.id}/player`)
+    await expect(page.getByRole('heading', { name: /Sanitization fixture/ })).toBeVisible()
+    await expect(page.locator('.slidev-layout script, .slidev-layout style, .slidev-layout [onerror], .slidev-layout [onload]')).toHaveCount(0)
+    await page.waitForTimeout(200)
+    expect(await page.evaluate(() => Boolean(window.__interdeckXss))).toBe(false)
+  } finally {
+    expect((await request.delete(`/api/decks/${fixture.id}`, { headers })).ok()).toBeTruthy()
+  }
+})
+
 test('a mobile audience votes by keyboard and after-vote tallies stay private to voters', async ({ browser, request, baseURL }) => {
   expect((await request.post(`/api/decks/${deck.id}/present`, { headers })).ok()).toBeTruthy()
   const voterContext = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 } })

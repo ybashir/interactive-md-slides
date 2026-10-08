@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 
 import dotenv from 'dotenv'
 import express from 'express'
+import { rateLimit } from 'express-rate-limit'
 import httpProxy from 'http-proxy'
 import { parseSync } from '@slidev/parser'
 
@@ -19,13 +20,24 @@ dotenv.config({ path: resolve(here, '../../../.env') })
 
 const port = Number(process.env.PORT || 3000)
 const apiBase = (process.env.INTERNAL_API_BASE || 'http://127.0.0.1:8080').replace(/\/$/, '')
-const { appEnv, internalToken, slidevSecret } = runtimeConfig(process.env)
+const { appEnv, internalToken, slidevSecret, trustProxy, requestLimits } = runtimeConfig(process.env)
 const webDist = resolve(here, process.env.WEB_DIST_DIR || '../../../apps/web/dist')
 const internalFetchTimeoutMs = Math.max(1_000, Number(process.env.INTERNAL_FETCH_TIMEOUT_MS || 10_000))
 
 const app = express()
 const server = createServer(app)
 app.disable('x-powered-by')
+app.set('trust proxy', trustProxy)
+const rateLimitOptions = {
+  windowMs: 60_000,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: { code: 'gateway_rate_limit', message: 'Too many requests. Try again shortly.' } },
+}
+const authLimiter = rateLimit({ ...rateLimitOptions, limit: requestLimits.auth })
+const sourceLimiter = rateLimit({ ...rateLimitOptions, limit: requestLimits.source })
+const exportLimiter = rateLimit({ ...rateLimitOptions, limit: requestLimits.export })
+const staticLimiter = rateLimit({ ...rateLimitOptions, limit: requestLimits.static })
 app.use((_request, response, next) => {
   response.setHeader('X-Content-Type-Options', 'nosniff')
   response.setHeader('Referrer-Policy', 'same-origin')
@@ -36,6 +48,8 @@ app.use((_request, response, next) => {
     response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   next()
 })
+app.use('/api/auth', authLimiter)
+app.use('/_gateway/slidev', sourceLimiter)
 // Upstream services are private implementation details. Rewrite the Host header
 // to the selected upstream so Vite validates `localhost`, while `xfwd` preserves
 // the public host for any application code that needs the original request.
@@ -288,7 +302,7 @@ app.use((request, response, next) => {
   proxy.web(request, response, { target: apiBase })
 })
 
-app.use('/slidev', async (request, response) => {
+app.use('/slidev', exportLimiter, async (request, response) => {
   try {
     if (!['GET', 'HEAD'].includes(request.method))
       return response.status(405).setHeader('Allow', 'GET, HEAD').send('Export routes are read-only')
@@ -298,15 +312,16 @@ app.use('/slidev', async (request, response) => {
 
     const requestUrl = new URL(path, 'http://gateway.local')
     const access = requestUrl.searchParams.get('access')
+    // Both query and cookie credentials pass the same verification before
+    // choosing whether to redirect or proxy the authenticated request.
+    const token = access || parseCookies(request.headers.cookie).interdeck_slidev
+    const payload = verifySlidevToken(token, parsed, slidevSecret)
     if (access) {
-      const payload = verifySlidevToken(access, parsed, slidevSecret)
       setSlidevCookie(response, access, payload, parsed.deckId, parsed.mode)
       requestUrl.searchParams.delete('access')
       return response.redirect(302, `${requestUrl.pathname}${requestUrl.search}`)
     }
 
-    const token = parseCookies(request.headers.cookie).interdeck_slidev
-    const payload = verifySlidevToken(token, parsed, slidevSecret)
     const target = await slidev.ensure({ ...parsed, version: payload.version })
     // Express removes the mounted `/slidev` prefix from request.url. Slidev is
     // configured with that full base path, so forward the original URL.
@@ -325,7 +340,7 @@ app.use('/slidev', async (request, response) => {
 })
 
 if (existsSync(webDist)) {
-  app.use(express.static(webDist, { index: false, maxAge: process.env.APP_ENV === 'production' ? '1h' : 0 }))
+  app.use(staticLimiter, express.static(webDist, { index: false, maxAge: process.env.APP_ENV === 'production' ? '1h' : 0 }))
   app.get('*splat', (request, response, next) => {
     if (request.path.startsWith('/api/') || request.path.startsWith('/slidev/')) return next()
     response.sendFile(join(webDist, 'index.html'))
