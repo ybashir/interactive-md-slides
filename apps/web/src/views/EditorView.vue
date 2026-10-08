@@ -6,8 +6,8 @@ import QrcodeVue from 'qrcode.vue'
 import { ApiError, api, patch, post, put } from '../api'
 import type MarkdownEditorComponent from '../components/MarkdownEditor.vue'
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from '../local-draft.mjs'
-import { findCurrentSlideContent, findSlideNumberByKey, replaceCurrentSlideContent } from '../current-slide-source.mjs'
-import { deleteOrganizedSlide, duplicateOrganizedSlide, listOrganizedSlides, reorderOrganizedSlides } from '../slide-organizer.mjs'
+import { findCurrentSlideContent, findProposalSlide, findSlideNumberByKey, replaceCurrentSlideContent } from '../current-slide-source.mjs'
+import { deleteOrganizedSlide, duplicateOrganizedSlide, insertOrganizedSlide, listOrganizedSlides, reorderOrganizedSlides } from '../slide-organizer.mjs'
 import { buildSlidevExportUrl, readConfiguredTheme, repairUnsafeHeadmatterTitle, setConfiguredTheme } from '../slidev-config.mjs'
 import { diagnoseSource } from '../source-diagnostics.mjs'
 import type { DeckAsset, DeckDetail } from '../types'
@@ -173,7 +173,8 @@ let interactionTypeahead = ''
 let interactionTypeaheadTimer: number | undefined
 let noticeTimer: number | undefined
 let previewNavigationSequence = 0
-let pendingPreviewNavigation: { commandId: string; slideKey: string; slideNumber: number } | null = null
+let pendingPreviewNavigation: { commandId: string; slideKey: string; slideNumber: number; minVersion: number } | null = null
+let renderedPreviewVersion: number | null = null
 let paneResizeStartX = 0
 let paneResizeStartWidth = 0
 
@@ -560,19 +561,17 @@ async function applyAssistantProposal() {
     assistantError.value = 'The deck changed after this proposal was created. Discard it and ask Gemini again.'
     return
   }
-  const focusedSlideNumber = findSlideNumberByKey(proposal.proposed_markdown, proposal.focus_slide_key)
-    || currentSlideNumber.value
+  const focus = findProposalSlide(markdown.value, proposal.proposed_markdown, proposal.focus_slide_key, currentSlideNumber.value)
   markdown.value = proposal.proposed_markdown
-  currentSlideNumber.value = focusedSlideNumber
-  sourceKind.value = 'slide'
-  await nextTick()
-  if (!editor.value?.syncValue(editorSource.value)) {
-    assistantError.value = 'The editor could not show the updated slide.'
-    return
+  if (focus) {
+    currentSlideNumber.value = focus.slideNumber
+    navigatePreviewToSlide(focus.slideKey, focus.slideNumber)
   }
+  await nextTick()
+  syncEditorToCurrentSlide()
   rememberAssistantTurn({
     role: 'assistant',
-    text: `Applied: ${proposal.summary || proposal.message}${proposal.focus_slide_key ? ` Focus slide: ${proposal.focus_slide_key}.` : ''}`,
+    text: `Applied: ${proposal.summary || proposal.message}${focus ? ` Focus slide: ${focus.slideKey}.` : ''}`,
   })
   assistantProposal.value = null
   assistantError.value = ''
@@ -638,11 +637,30 @@ function applyOrganizerMarkdown(nextSource: string, focusSlideKey: string, messa
     organizerUndoStack.value = [...organizerUndoStack.value.slice(-19), markdown.value]
     organizerRedoStack.value = []
   }
-  if (!editor.value?.replaceAll(nextSource)) markdown.value = nextSource
+  markdown.value = nextSource
   currentSlideNumber.value = findSlideNumberByKey(nextSource, focusSlideKey) || 1
+  navigatePreviewToSlide(focusSlideKey, currentSlideNumber.value)
+  void nextTick(syncEditorToCurrentSlide)
   noticeMessage.value = message
   window.clearTimeout(noticeTimer)
   noticeTimer = window.setTimeout(() => { noticeMessage.value = '' }, 4000)
+}
+
+function syncEditorToCurrentSlide() {
+  editor.value?.syncValue(editorSource.value)
+  if (sourceKind.value === 'css' || sourceKind.value === 'organizer') return
+  const slice = currentSlideContent.value
+  const line = sourceKind.value === 'markdown' && slice
+    ? markdown.value.slice(0, slice.start).split(/\r?\n/).length
+    : 1
+  editor.value?.revealLine(line)
+}
+
+function addSlideFromMenu() {
+  if (!deck.value || deck.value.is_live) return
+  interactionMenuOpen.value = false
+  const inserted = insertOrganizedSlide(markdown.value, currentSlideKey.value)
+  if (inserted.slideKey) applyOrganizerMarkdown(inserted.source, inserted.slideKey, 'Added a slide after the current slide.')
 }
 
 function moveOrganizedSlide(slideKey: string, delta: number) {
@@ -895,6 +913,11 @@ function sendPreviewSource(value: DeckDetail | null = deck.value) {
 
 function postPreviewNavigation() {
   if (!pendingPreviewNavigation || !previewFrame.value?.contentWindow) return
+  // An inserted slide cannot be selected in the old iframe source. Keep the
+  // command until the saved revision has actually rendered in the player.
+  if (!deck.value || renderedPreviewVersion !== deck.value.version
+    || renderedPreviewVersion < pendingPreviewNavigation.minVersion
+    || !deck.value.slides.some(slide => slide.key === pendingPreviewNavigation?.slideKey)) return
   previewFrame.value.contentWindow.postMessage({
     type: 'interdeck:command',
     action: 'go',
@@ -911,6 +934,7 @@ function navigatePreviewToSlide(slideKey: string, slideNumber: number) {
     commandId: `editor-organizer-${previewNavigationSequence}`,
     slideKey,
     slideNumber,
+    minVersion: (deck.value?.version || 0) + (markdown.value === savedMarkdown ? 0 : 1),
   }
   postPreviewNavigation()
 }
@@ -918,18 +942,25 @@ function navigatePreviewToSlide(slideKey: string, slideNumber: number) {
 function receivePreviewMessage(event: MessageEvent) {
   if (event.origin !== window.location.origin || event.source !== previewFrame.value?.contentWindow) return
   if (event.data?.type === 'interdeck:ready') {
+    const version = Number(event.data.version)
+    if (Number.isFinite(version)) renderedPreviewVersion = version
     postPreviewNavigation()
     return
   }
   if (event.data?.type !== 'interdeck:navigation') return
   const requested = Number(event.data.slideNumber)
   if (!Number.isFinite(requested)) return
-  if (pendingPreviewNavigation && event.data.commandId === pendingPreviewNavigation.commandId) {
-    currentSlideNumber.value = findSlideNumberByKey(markdown.value, pendingPreviewNavigation.slideKey)
-      || pendingPreviewNavigation.slideNumber
-    pendingPreviewNavigation = null
+  if (pendingPreviewNavigation) {
+    if (event.data.commandId === pendingPreviewNavigation.commandId
+      && event.data.slideKey === pendingPreviewNavigation.slideKey
+      && event.data.version === deck.value?.version) {
+      currentSlideNumber.value = findSlideNumberByKey(markdown.value, pendingPreviewNavigation.slideKey)
+        || pendingPreviewNavigation.slideNumber
+      pendingPreviewNavigation = null
+    }
     return
   }
+  if (event.data.version !== deck.value?.version) return
   currentSlideNumber.value = Math.max(1, Math.min(Math.trunc(requested), deck.value?.slides.length || 1))
 }
 
@@ -1400,7 +1431,8 @@ function insertSnippet(kind: SnippetKind) {
               <button ref="interactionTrigger" class="source-add-button" aria-label="Add slide content" aria-haspopup="menu" :aria-expanded="interactionMenuOpen" :disabled="deck?.is_live" @click="toggleInteractionMenu"><span aria-hidden="true">+</span><b>Add</b></button>
               <div v-if="interactionMenuOpen" ref="interactionMenu" class="interaction-menu" role="menu" aria-label="Add slide content" @keydown="navigateInteractionMenu">
                 <template v-if="addMenuLevel === 'root'">
-                  <header><strong>Add to slide</strong><span>Insert at the current cursor</span></header>
+                  <header><strong>Add</strong><span>Create a slide or insert content</span></header>
+                  <button role="menuitem" data-label="add slide" @click="addSlideFromMenu"><strong>Add slide</strong><span>Insert a new slide after the current one.</span></button>
                   <button role="menuitem" data-label="interaction" @click="showInteractionChoices"><strong>Interaction or chart</strong><span>Polls, Q&amp;A, reactions, audience count, ECharts, and more.</span></button>
                   <button role="menuitem" data-label="asset" @click="chooseAssetFromAddMenu"><strong>Asset</strong><span>Upload or insert a private image, SVG, or font.</span></button>
                   <button role="menuitem" data-label="qr code" @click="insertQrFromAddMenu"><strong>Audience QR code</strong><span>Insert this deck's live room QR component.</span></button>
@@ -1455,7 +1487,7 @@ function insertSnippet(kind: SnippetKind) {
             <div ref="assistantConversation" class="assistant-conversation">
               <div v-if="!assistantTurns.length" class="assistant-welcome"><strong>Ask for a deck change</strong><span>Gemini knows the slide in the preview, the complete deck, Slidev, and every Interdeck interaction.</span></div>
               <div v-for="(turn, index) in assistantTurns" :key="index" :class="['assistant-turn', turn.role]">{{ turn.text }}</div>
-              <div v-if="assistantPending" class="assistant-thinking"><i /> Reading the complete deck and preparing an edit…</div>
+              <div v-if="assistantPending" class="assistant-thinking"><i /> Preparing a slide proposal…</div>
             </div>
             <article v-if="assistantProposal" class="assistant-proposal">
               <div><span>PROPOSED CHANGE</span><strong>{{ assistantProposal.summary || assistantProposal.message }}</strong></div>

@@ -54,6 +54,19 @@ export function deleteOrganizedSlide(source, slideKey) {
   return `${source.slice(0, slide.blockStart)}${source.slice(slide.blockEnd)}`
 }
 
+export function insertOrganizedSlide(source, afterSlideKey) {
+  const slides = listOrganizedSlides(source)
+  const previous = slides.find(slide => slide.key === afterSlideKey)
+  if (!previous) return { source, slideKey: null }
+  const usedKeys = new Set(slides.map(slide => slide.key))
+  const slideKey = usedKeys.has('new-slide') ? uniqueCopyName('new-slide', usedKeys) : 'new-slide'
+  const newline = source.includes('\r\n') ? '\r\n' : '\n'
+  const prefix = source.slice(0, previous.blockEnd)
+  const spacing = /(?:\r?\n)[ \t]*(?:\r?\n)$/.test(prefix) ? '' : prefix.endsWith('\n') ? newline : newline + newline
+  const block = `---${newline}${newline}<!-- interdeck-slide: ${slideKey} -->${newline}# New slide${newline}${newline}`
+  return { source: `${prefix}${spacing}${block}${source.slice(previous.blockEnd)}`, slideKey }
+}
+
 export function duplicateOrganizedSlide(source, slideKey) {
   const slides = listOrganizedSlides(source)
   const slide = slides.find(item => item.key === slideKey)

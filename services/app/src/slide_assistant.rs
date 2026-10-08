@@ -21,14 +21,14 @@ use crate::{
     auth::require_user,
     error::{AppError, AppResult},
     markdown::{
-        normalize_marked_slide_boundaries, parse_deck, repair_duplicate_slide_markers,
+        ParsedDeck, normalize_marked_slide_boundaries, parse_deck, repair_duplicate_slide_markers,
         repair_redundant_slide_markers, repair_unquoted_headmatter_title, validate_deck_headmatter,
     },
     state::AppState,
 };
 
 const SKILL_PACK: &str = include_str!("../prompts/slidev_assistant.md");
-const PROMPT_VERSION: &str = "slidev-author-v9-focused-frontmatter";
+const PROMPT_VERSION: &str = "slidev-author-v10-slide-insertion";
 const REFUSAL: &str = "I can only help create or update this slide deck.";
 const GEMINI_MAX_ATTEMPTS: usize = 2;
 static PRIVATE_ASSET_REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
@@ -359,8 +359,14 @@ pub async fn propose(
     }
     if let Some(source) = &proposed_markdown {
         validate_proposed_asset_references(source, &allowed_asset_urls)?;
-        let expected_slide_count = validate_proposed_markdown(source)?;
-        validate_with_slidev_parser(&state, deck_id, source, expected_slide_count).await?;
+        let proposed_deck = validate_proposed_markdown(source)?;
+        proposal.focus_slide_key = resolve_focus_slide_key(
+            &parsed_deck,
+            &proposed_deck,
+            proposal.focus_slide_key.as_deref(),
+            &current_slide.key,
+        );
+        validate_with_slidev_parser(&state, deck_id, source, proposed_deck.slides.len()).await?;
     }
     let proposal_id = Uuid::now_v7();
     sqlx::query(
@@ -678,7 +684,48 @@ fn apply_operations(source: &str, operations: &[EditOperation]) -> AppResult<Str
     Ok(result)
 }
 
-fn validate_proposed_markdown(source: &str) -> AppResult<usize> {
+fn resolve_focus_slide_key(
+    before: &ParsedDeck,
+    after: &ParsedDeck,
+    preferred_key: Option<&str>,
+    current_key: &str,
+) -> Option<String> {
+    let existing_keys = before
+        .slides
+        .iter()
+        .map(|slide| slide.key.as_str())
+        .collect::<HashSet<_>>();
+    let added = after
+        .slides
+        .iter()
+        .filter(|slide| !existing_keys.contains(slide.key.as_str()))
+        .collect::<Vec<_>>();
+    let current_index = before
+        .slides
+        .iter()
+        .position(|slide| slide.key == current_key)
+        .unwrap_or(0);
+    added
+        .iter()
+        .copied()
+        .find(|slide| Some(slide.key.as_str()) == preferred_key)
+        .or_else(|| added.first().copied())
+        .or_else(|| {
+            after
+                .slides
+                .iter()
+                .find(|slide| Some(slide.key.as_str()) == preferred_key)
+        })
+        .or_else(|| after.slides.iter().find(|slide| slide.key == current_key))
+        .or_else(|| {
+            after
+                .slides
+                .get(current_index.min(after.slides.len().saturating_sub(1)))
+        })
+        .map(|slide| slide.key.clone())
+}
+
+fn validate_proposed_markdown(source: &str) -> AppResult<ParsedDeck> {
     let lower = source.to_ascii_lowercase();
     for prohibited in ["<script", "javascript:", "vite.config", "package.json"] {
         if lower.contains(prohibited) {
@@ -695,7 +742,7 @@ fn validate_proposed_markdown(source: &str) -> AppResult<usize> {
             "Gemini proposed invalid Interdeck Markdown: {error}"
         ))
     })?;
-    Ok(parsed.slides.len())
+    Ok(parsed)
 }
 
 fn validate_proposed_asset_references(
@@ -933,6 +980,70 @@ mod tests {
         assert_eq!(
             extract_marked_slide(markdown, "second_slide"),
             "---\nlayout: center\n---\n\n<!-- interdeck-slide: second_slide -->\n# Second\n\n"
+        );
+    }
+
+    #[test]
+    fn adds_a_slide_from_focused_context_without_rewriting_other_slides() {
+        let source = "---\ntheme: default\n---\n\n<!-- interdeck-slide: first -->\n# First\n\n---\nlayout: center\n---\n\n<!-- interdeck-slide: second -->\n# Second\n\n---\n\n<!-- interdeck-slide: third -->\n# Third\n";
+        let (source, _) = normalize_marked_slide_boundaries(source);
+        let before = parse_deck(&source).unwrap();
+        for current_key in ["first", "second"] {
+            let focused = extract_marked_slide(&source, current_key);
+            let added = apply_operations(
+                &source,
+                &[EditOperation {
+                    kind: "replace".to_owned(),
+                    old_text: focused.clone(),
+                    new_text: format!(
+                        "{focused}\n---\n\n<!-- interdeck-slide: new-topic -->\n# New topic\n\n"
+                    ),
+                }],
+            )
+            .unwrap();
+            let (added, _) = normalize_marked_slide_boundaries(&added);
+            let after = validate_proposed_markdown(&added).unwrap();
+            assert_eq!(after.slides.len(), 4);
+            for key in ["first", "second", "third"] {
+                assert_eq!(
+                    extract_marked_slide(&source, key),
+                    extract_marked_slide(&added, key)
+                );
+            }
+            assert_eq!(
+                extract_deck_headmatter(&source),
+                extract_deck_headmatter(&added)
+            );
+            for preferred in [None, Some(current_key), Some("nonexistent")] {
+                assert_eq!(
+                    resolve_focus_slide_key(&before, &after, preferred, current_key).as_deref(),
+                    Some("new-topic")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn focuses_the_repaired_new_id_and_honors_a_preferred_new_slide() {
+        let source = "<!-- interdeck-slide: first -->\n# First\n";
+        let duplicated = format!("{source}\n---\n\n<!-- interdeck-slide: first -->\n# New topic\n");
+        let (repaired, _) = repair_duplicate_slide_markers(&duplicated);
+        let before = parse_deck(source).unwrap();
+        let after = validate_proposed_markdown(&repaired).unwrap();
+        assert_eq!(
+            resolve_focus_slide_key(&before, &after, Some("first"), "first"),
+            Some(after.slides[1].key.clone())
+        );
+        let two_added =
+            format!("{repaired}\n---\n\n<!-- interdeck-slide: another -->\n# Another\n");
+        let after = validate_proposed_markdown(&two_added).unwrap();
+        assert_eq!(
+            resolve_focus_slide_key(&before, &after, Some("another"), "first").as_deref(),
+            Some("another")
+        );
+        assert_eq!(
+            resolve_focus_slide_key(&before, &before, None, "first").as_deref(),
+            Some("first")
         );
     }
 

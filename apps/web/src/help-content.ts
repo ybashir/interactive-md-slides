@@ -209,7 +209,7 @@ export const helpArticles: HelpArticle[] = [
       { type: 'paragraph', text: 'Create a deck from the dashboard, import an existing Slidev Markdown file, or open the Amazing Sea Creatures sample to explore a complete interactive presentation. Interdeck saves edits automatically and keeps the preview synchronized with the latest valid source.' },
       { type: 'list', items: [
         'Write or ask the Agent to change the current slide.',
-        'Use + Add for interactions, charts, assets, and the audience QR code.',
+        'Use + Add → Add slide to insert a slide after the current one. The same menu adds interactions, charts, assets, and the audience QR code.',
         'Wait for “Draft saved” and confirm the live preview.',
         'Select Present, review the preflight, and start the presentation.',
         'Share only the stage window. Keep the presenter console private for controls and moderation.',
@@ -225,6 +225,7 @@ export const helpArticles: HelpArticle[] = [
     blocks: [
       { type: 'list', items: [
         'Current slide is the default and shows only the slide in the preview. Slide-specific frontmatter is editable on slides after the first.',
+        'Add slide inserts after the current preview slide and opens the new slide. Your selected editing mode stays the same.',
         'All slides shows the complete slides.md file. Use it for deck headmatter, moving slides, or changes across several slides.',
         'Deck styles shows style.css and applies CSS across the entire deck.',
         'Theme choices live in the same Edit menu and do not change the selected editing scope.',
@@ -328,6 +329,7 @@ layout: two-cols-header
       { type: 'paragraph', text: 'The Agent can create, rewrite, organize, style, and repair slides. It knows the supported Slidev and Interdeck syntax, the current preview slide, the deck asset catalog, and recent conversation.' },
       { type: 'list', items: [
         'Use Current slide for quick, focused requests such as “make this comparison reveal one card at a time.”',
+        'Ask the Agent to add a slide in either mode. By default it inserts after the current slide; ask for the end of the deck if you prefer. Applying the proposal opens an added slide without changing your editing mode.',
         'Use All slides for deck-wide work, moving slides, changing headmatter, or creating a complete narrative.',
         'Review every proposed change before selecting Apply to deck. Discard leaves the source untouched.',
         'Refer to uploaded assets by their exact filename. The Agent will use the private URL from the deck catalog.',

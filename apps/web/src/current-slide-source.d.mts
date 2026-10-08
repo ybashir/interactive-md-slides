@@ -8,4 +8,5 @@ export interface CurrentSlideContent {
 
 export function findCurrentSlideContent(source: string, slideNumber: number): CurrentSlideContent | null
 export function findSlideNumberByKey(source: string, slideKey?: string): number | null
+export function findProposalSlide(source: string, proposedSource: string, preferredKey: string | undefined, currentSlideNumber: number): { slideKey: string; slideNumber: number } | null
 export function replaceCurrentSlideContent(source: string, slideNumber: number, value: string): string

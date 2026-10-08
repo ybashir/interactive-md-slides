@@ -103,6 +103,19 @@ export function findSlideNumberByKey(source, slideKey) {
   return index >= 0 ? index + 1 : null
 }
 
+export function findProposalSlide(source, proposedSource, preferredKey, currentSlideNumber) {
+  const before = markerMatches(source)
+  const after = markerMatches(proposedSource)
+  const existingKeys = new Set(before.map(slide => slide.key))
+  const added = after.filter(slide => !existingKeys.has(slide.key))
+  const currentKey = before[Number(currentSlideNumber || 1) - 1]?.key
+  const focus = added.find(slide => slide.key === preferredKey) || added[0]
+    || after.find(slide => slide.key === preferredKey)
+    || after.find(slide => slide.key === currentKey)
+    || after[Math.max(0, Math.min(after.length - 1, Number(currentSlideNumber || 1) - 1))]
+  return focus ? { slideKey: focus.key, slideNumber: after.indexOf(focus) + 1 } : null
+}
+
 export function replaceCurrentSlideContent(source, slideNumber, value) {
   const slice = findCurrentSlideContent(source, slideNumber)
   if (!slice) return source
