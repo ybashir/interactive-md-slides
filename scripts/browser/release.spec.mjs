@@ -113,6 +113,12 @@ test('the restricted Slidev exporter renders a PDF and its PPTX library writes a
   exportURL.pathname += 'export'
   await page.goto(exportURL.toString())
   await expect(page.locator('.print-slide-container').first()).toBeVisible({ timeout: 45000 })
+  await page.emulateMedia({ media: 'print' })
+  await expect(page.locator('.print-slide-container').getByRole('heading', { name: 'Browser fixture', exact: true }).first()).toBeVisible({ timeout: 45000 })
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  })
   const pdf = await page.pdf({ printBackground: true, preferCSSPageSize: true })
   expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
   expect(pdf.length).toBeGreaterThan(5000)
