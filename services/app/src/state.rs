@@ -24,6 +24,7 @@ pub struct AppState {
     audience_snapshot_locks: DashMap<Uuid, Arc<AsyncMutex<()>>>,
     event_clocks: DashMap<Uuid, Arc<EventClock>>,
     rate_limits: DashMap<String, Arc<Mutex<RateWindow>>>,
+    rate_limit_last_sweep: Mutex<Instant>,
     assistant_inflight: DashMap<String, ()>,
     instance_id: Uuid,
     event_listener_ready: AtomicBool,
@@ -101,6 +102,7 @@ impl AppState {
             audience_snapshot_locks: DashMap::new(),
             event_clocks: DashMap::new(),
             rate_limits: DashMap::new(),
+            rate_limit_last_sweep: Mutex::new(Instant::now()),
             assistant_inflight: DashMap::new(),
             instance_id: Uuid::now_v7(),
             event_listener_ready: AtomicBool::new(false),
@@ -249,7 +251,18 @@ impl AppState {
         limit: u32,
         window: Duration,
     ) -> Result<(), u64> {
-        if self.rate_limits.len() > 100_000 {
+        // Sweeping is O(keys). Under a flood of fresh keys every entry is
+        // still live, so sweep at most every few seconds instead of on each
+        // request, and let only one caller do it.
+        if self.rate_limits.len() > 100_000
+            && self.rate_limit_last_sweep.try_lock().is_ok_and(|mut last| {
+                let due = last.elapsed() >= Duration::from_secs(5);
+                if due {
+                    *last = Instant::now();
+                }
+                due
+            })
+        {
             self.rate_limits.retain(|_, value| {
                 value
                     .lock()
