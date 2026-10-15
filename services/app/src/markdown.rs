@@ -1117,7 +1117,7 @@ fn validate_config(
     if kind == "rating" {
         let min = numeric_attr(id, attrs, "min", 1)?;
         let max = numeric_attr(id, attrs, "max", 5)?;
-        if min >= max || max - min > 10 {
+        if min >= max || max.checked_sub(min).is_none_or(|span| span > 10) {
             return Err(format!(
                 "Interaction `{id}` needs an integer rating range of at most 10 values"
             ));
@@ -1236,7 +1236,7 @@ fn parse_survey_questions(
             "rating" => {
                 let min = numeric_attr(&question_id, &attrs, "min", 1)?;
                 let max = numeric_attr(&question_id, &attrs, "max", 5)?;
-                if min >= max || max - min > 10 {
+                if min >= max || max.checked_sub(min).is_none_or(|span| span > 10) {
                     return Err(format!(
                         "Survey rating `{question_id}` needs an integer range of at most 10 values"
                     ));
@@ -1371,6 +1371,12 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
+
+    #[test]
+    fn rating_ranges_cannot_overflow_past_validation() {
+        let source = "---\ntitle: T\n---\n\n<!-- interdeck-slide: one -->\n# One\n\n:::interact{id=\"rate\" type=\"rating\" min=\"-9223372036854775808\" max=\"9223372036854775807\"}\nRate it\n:::\n";
+        assert!(parse_deck(source).is_err());
+    }
 
     #[test]
     fn parses_slide_and_element_interactions_with_stable_ids() {

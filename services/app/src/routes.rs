@@ -4352,8 +4352,15 @@ fn validate_response_payload(
                 .and_then(Value::as_str)
                 .and_then(|value| value.parse::<i64>().ok())
                 .unwrap_or(100);
-            let supplied = allocations.values().filter_map(Value::as_i64).sum::<i64>();
-            if supplied != total {
+            // Values are attacker-controlled i64s: an unchecked sum wraps in
+            // release builds, so huge values could add up to `total`.
+            let supplied = allocations
+                .values()
+                .filter_map(Value::as_i64)
+                .try_fold(0_i64, |sum, value| {
+                    (value <= total).then(|| sum.checked_add(value)).flatten()
+                });
+            if supplied != Some(total) {
                 return Err(AppError::BadRequest(format!(
                     "Allocations must add up to {total}"
                 )));
@@ -5345,6 +5352,22 @@ fn require_internal(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn allocation_totals_cannot_be_reached_by_overflowing_values() {
+        let options = json!([
+            { "id": "a", "label": "A" },
+            { "id": "b", "label": "B" },
+            { "id": "c", "label": "C" },
+        ]);
+        let config = json!({ "total": "100" });
+        let wrapping = json!({ "allocations": { "a": i64::MAX, "b": i64::MAX, "c": 102 } });
+        assert!(validate_response_payload("allocation", &options, &config, &wrapping).is_err());
+        let oversized = json!({ "allocations": { "a": 150, "b": 0, "c": 0 } });
+        assert!(validate_response_payload("allocation", &options, &config, &oversized).is_err());
+        let valid = json!({ "allocations": { "a": 50, "b": 30, "c": 20 } });
+        assert!(validate_response_payload("allocation", &options, &config, &valid).is_ok());
+    }
 
     #[test]
     fn live_summary_turns_poll_aggregates_into_a_readable_leader() {
