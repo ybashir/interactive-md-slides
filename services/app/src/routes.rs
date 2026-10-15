@@ -2044,6 +2044,14 @@ pub async fn reset_results(
     let user = require_user(&state, &headers).await?;
     assert_owner(&state.db, deck_id, user.id).await?;
     let mut tx = state.db.begin().await?;
+    // Lock the deck before the run, matching start_presentation_mode. This
+    // serializes MAX(epoch) + 1 between concurrent resets (otherwise the
+    // second INSERT hits the result_epochs key) and avoids a lock-order
+    // deadlock with a presentation start.
+    sqlx::query("SELECT 1 FROM decks WHERE id = $1 FOR UPDATE")
+        .bind(deck_id)
+        .execute(&mut *tx)
+        .await?;
     let run = sqlx::query(
         "SELECT id, run_mode FROM presentation_runs WHERE deck_id = $1 AND status = 'live' FOR UPDATE",
     )
