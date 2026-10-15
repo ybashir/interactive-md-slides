@@ -4,6 +4,10 @@ Interdeck is a self-hosted presentation app built on [Slidev](https://sli.dev). 
 
 ## See Interdeck in action
 
+https://github.com/user-attachments/assets/45356e5b-7211-4377-95ba-106013afb89a
+
+[Watch the 40-second film with sound](https://github.com/user-attachments/assets/45356e5b-7211-4377-95ba-106013afb89a).
+
 A 40-second introduction to Markdown authoring, live audience interactions, and optional Gemini assistance. Demo screens and results are illustrative.
 
 **Status: early release.** The app supports single-owner decks, autosave and recovery, private asset uploads, live presenter controls, anonymous or named participation, durable responses, and CSV downloads. Optional Gemini assistance helps with slide authoring and Q&A moderation. PDF, PPTX, and image exports use a creator-only Slidev worker. See [known limits](#known-limits) before choosing it for an event.
