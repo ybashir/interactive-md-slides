@@ -1,7 +1,7 @@
 import { findCurrentSlideContent } from './current-slide-source.mjs'
 
 const MARKER = /<!--\s*interdeck-slide:\s*([a-z0-9][a-z0-9_-]*)\s*-->/i
-const ATTRIBUTE_ID = /\bid\s*=\s*(["'])([^"']+)\1/gi
+const ATTRIBUTE_ID = /(?<![\w-])id\s*=\s*(["'])([^"']+)\1/gi
 
 function uniqueCopyName(base, used) {
   let candidate = `${base}-copy`
@@ -84,7 +84,7 @@ export function duplicateOrganizedSlide(source, slideKey) {
     return `id=${quote}${next}${quote}`
   })
   for (const [oldId, newId] of idCopies) {
-    const sourceAttribute = new RegExp(`\\bsource\\s*=\\s*(["'])${escapeRegExp(oldId)}\\1`, 'gi')
+    const sourceAttribute = new RegExp(`(?<![\\w-])source\\s*=\\s*(["'])${escapeRegExp(oldId)}\\1`, 'gi')
     block = block.replace(sourceAttribute, (_match, quote) => `source=${quote}${newId}${quote}`)
   }
   const separator = source.slice(slide.blockEnd).startsWith('\n') || block.endsWith('\n') ? '' : '\n'

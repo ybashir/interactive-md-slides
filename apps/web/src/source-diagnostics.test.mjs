@@ -35,3 +35,13 @@ test('accepts valid block and element interaction syntax', () => {
 - An idea {interact="vote" id="idea-vote"}
 `), [])
 })
+
+test('does not treat hyphenated attributes such as data-id as the interaction id', () => {
+  const messages = diagnoseSource(':::interact{data-id="abc" type=poll}\n:::').map(item => item.message)
+  assert.ok(messages.some(message => message.includes('missing a stable `id`')))
+})
+
+test('ignores interaction syntax shown inside fenced code blocks', () => {
+  const source = '```md\n:::interact{id=q1 type=poll}\n```\n\n:::interact{id=q1 type=poll}\n:::'
+  assert.deepEqual(diagnoseSource(source), [])
+})

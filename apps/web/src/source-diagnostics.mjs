@@ -3,7 +3,7 @@ import { parseChartSpec, parseEChartsSpec } from './chart-spec.mjs'
 const VALID_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$/
 
 function attribute(source, name) {
-  const match = source.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s}]+))`))
+  const match = source.match(new RegExp(`(?<![\\w-])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s}]+))`))
   return match ? (match[1] ?? match[2] ?? match[3]) : null
 }
 
@@ -23,9 +23,17 @@ export function diagnoseSource(markdown) {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n')
   const diagnostics = []
   const identifiers = []
+  let fence = null
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/)
+    if (fenceMatch) {
+      if (!fence) fence = fenceMatch[1]
+      else if (fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) fence = null
+      return
+    }
+    if (fence) return
     const slide = line.match(/<!--\s*interdeck-slide:\s*([^\s>]+)\s*-->/)
     if (slide) identifiers.push({ scope: 'slide', id: slide[1], line: lineNumber, source: line })
 
@@ -47,7 +55,7 @@ export function diagnoseSource(markdown) {
       }
     }
 
-    const element = !block && line.match(/\{([^}\n]*\binteract\s*=\s*[^}\n]+)\}/)
+    const element = !block && line.match(/\{([^}\n]*(?<![\w-])interact\s*=\s*[^}\n]+)\}/)
     if (element) {
       const id = attribute(element[1], 'id')
       if (!id) diagnostics.push(marker('Element interaction is missing a stable `id` attribute.', lineNumber, line, 'interact'))
