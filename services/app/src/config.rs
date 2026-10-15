@@ -167,8 +167,14 @@ impl Config {
             ai_moderation_mode,
             ai_worker_concurrency,
             audience_retention_days: env_or("AUDIENCE_DATA_RETENTION_DAYS", "0")
-                .parse()
-                .context("AUDIENCE_DATA_RETENTION_DAYS must be a nonnegative integer")?,
+                .parse::<u32>()
+                .ok()
+                // Larger values overflow the chrono cutoff and panic the
+                // maintenance task, silently stopping all cleanup.
+                .filter(|days| *days <= 36_500)
+                .context(
+                    "AUDIENCE_DATA_RETENTION_DAYS must be an integer from 0 to 36500 (0 keeps data forever)",
+                )?,
         })
     }
 

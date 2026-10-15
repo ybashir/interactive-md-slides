@@ -433,7 +433,7 @@ function setSlidevCookie(response, token, payload, deckId, mode) {
   response.cookie('interdeck_slidev', token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.APP_ENV === 'production',
+    secure: appEnv === 'production',
     maxAge: Math.max(1, payload.exp * 1000 - Date.now()),
     path: `/slidev/${mode}/${deckId}/`,
   })
