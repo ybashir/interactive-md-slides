@@ -100,6 +100,11 @@ pub struct SlideAssistantResponse {
     source_hash: String,
 }
 
+/// Full-deck requests send the whole Markdown source on every call (with
+/// retries). Decks may be up to 2 MB, roughly half a million tokens, so cap
+/// what one request can spend and point large decks at focused-slide mode.
+const MAX_FULL_DECK_CONTEXT_BYTES: usize = 200_000;
+
 pub async fn propose(
     State(state): State<Arc<AppState>>,
     Path(deck_id): Path<Uuid>,
@@ -189,6 +194,13 @@ pub async fn propose(
     }
 
     let parsed_deck = parse_deck(&markdown).map_err(AppError::BadRequest)?;
+    let editor_scope = request.editor_scope.as_deref().unwrap_or("markdown");
+    let focused_slide_context = editor_scope == "slide";
+    if !focused_slide_context && markdown.len() > MAX_FULL_DECK_CONTEXT_BYTES {
+        return Err(AppError::BadRequest(
+            "This deck is too large to send to Gemini in full. Switch to the slide editor to ask about the current slide".to_owned(),
+        ));
+    }
     let current_slide_number = request.current_slide_number.unwrap_or(1);
     let current_slide = parsed_deck
         .slides
@@ -198,8 +210,6 @@ pub async fn propose(
             AppError::BadRequest("The current preview slide no longer exists".to_owned())
         })?;
     let current_slide_markdown = extract_marked_slide(&markdown, &current_slide.key);
-    let editor_scope = request.editor_scope.as_deref().unwrap_or("markdown");
-    let focused_slide_context = editor_scope == "slide";
     let deck_headmatter = extract_deck_headmatter(&markdown);
     let deck_outline = parsed_deck
         .slides
