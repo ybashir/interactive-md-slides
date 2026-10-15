@@ -3203,13 +3203,17 @@ async fn build_live_state(
                 presenter || audience_can_see_results(&config, own.is_some(), results_revealed)
             };
             let result = if results_visible {
-                aggregate(
+                let mut result = aggregate(
                     &kind,
                     &options,
                     &config,
                     &values,
                     presenter || own.is_some() || results_revealed,
-                )
+                );
+                if !presenter {
+                    strip_raw_text_answers(&mut result);
+                }
+                result
             } else if ranked_list {
                 json!({ "hidden": true, "count": values.len() })
             } else {
@@ -3421,6 +3425,19 @@ pub(crate) async fn build_shared_audience_state(
     deck_id: Uuid,
 ) -> AppResult<LiveState> {
     build_live_state(db, deck_id, None, false, false, None).await
+}
+
+/// Free-text and survey text answers are unmoderated. Only the presenter may
+/// read them; participants keep counts and every other aggregate.
+fn strip_raw_text_answers(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.remove("texts");
+            map.values_mut().for_each(strip_raw_text_answers);
+        }
+        Value::Array(items) => items.iter_mut().for_each(strip_raw_text_answers),
+        _ => {}
+    }
 }
 
 fn audience_can_see_results(config: &Value, has_responded: bool, results_revealed: bool) -> bool {
@@ -5345,6 +5362,20 @@ fn require_internal(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn participants_never_receive_raw_text_answers() {
+        let mut result = json!({
+            "count": 2,
+            "texts": ["first", "second"],
+            "questions": [{ "count": 1, "texts": ["survey text"] }, { "average": 4.0 }],
+        });
+        strip_raw_text_answers(&mut result);
+        assert_eq!(
+            result,
+            json!({ "count": 2, "questions": [{ "count": 1 }, { "average": 4.0 }] })
+        );
+    }
 
     #[test]
     fn live_summary_turns_poll_aggregates_into_a_readable_leader() {
