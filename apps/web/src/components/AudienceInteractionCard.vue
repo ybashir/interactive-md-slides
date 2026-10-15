@@ -65,6 +65,10 @@ const quizAnsweredCorrectly = computed(() => Boolean(
   && quizCorrectOption.value
   && props.interaction.response.option_id === quizCorrectOption.value,
 ))
+// The server rejects changed answers once the correct option is shown.
+const quizAnswerLocked = computed(() => props.interaction.kind === 'quiz'
+  && Boolean(props.interaction.response)
+  && Boolean(quizCorrectOption.value))
 const timerLabel = computed(() => {
   const seconds = timerRemaining.value ?? Number(props.interaction.config.timer || 0)
   const minutes = Math.floor(seconds / 60)
@@ -345,7 +349,7 @@ function matrixPointStyle(point: { x: number; y: number }) {
             correct: interaction.kind === 'quiz' && Boolean(interaction.response) && quizCorrectOption === option.id,
             incorrect: interaction.kind === 'quiz' && selectedOptions.includes(option.id) && Boolean(quizCorrectOption) && quizCorrectOption !== option.id,
           }"
-          :disabled="sending || !interaction.accepting_responses"
+          :disabled="sending || !interaction.accepting_responses || quizAnswerLocked"
           :aria-pressed="selectedOptions.includes(option.id)"
           @click="chooseOption(option.id)"
         >

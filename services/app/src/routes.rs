@@ -2573,7 +2573,8 @@ pub async fn submit_response(
     let context = sqlx::query(
         r#"
         SELECT r.result_epoch, r.input_frozen, i.kind, i.options, i.config, s.phase,
-               COALESCE(s.accepting_responses, true) AS accepting_responses, l.click_step,
+               COALESCE(s.accepting_responses, true) AS accepting_responses,
+               COALESCE(s.results_revealed, false) AS results_revealed, l.click_step,
                l.visible_element_interaction_ids,
                l.sequence AS durable_sequence
         FROM decks d
@@ -2600,6 +2601,11 @@ pub async fn submit_response(
         context.try_get("visible_element_interaction_ids")?;
     let durable_sequence: i64 = context.try_get("durable_sequence")?;
     let input_frozen: bool = context.try_get("input_frozen")?;
+    let results_revealed: bool = context.try_get("results_revealed")?;
+    // A quiz answer is only disclosed when this participant may see results.
+    // Once disclosed, the participant's answer is final for this epoch.
+    let quiz_answer_disclosed =
+        kind == "quiz" && audience_can_see_results(&config, true, results_revealed);
     if input_frozen {
         return Err(AppError::Conflict(
             "The presenter has temporarily frozen audience input".to_owned(),
@@ -2640,6 +2646,27 @@ pub async fn submit_response(
     }
 
     let mut tx = state.db.begin().await?;
+    if quiz_answer_disclosed {
+        let previous: Option<Value> = sqlx::query_scalar(
+            r#"
+            SELECT payload FROM current_responses
+            WHERE deck_id = $1 AND interaction_key = $2 AND participant_id = $3
+              AND result_epoch = $4
+            FOR UPDATE
+            "#,
+        )
+        .bind(deck_id)
+        .bind(&interaction_id)
+        .bind(participant_id)
+        .bind(epoch)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if previous.is_some_and(|previous| previous != request.payload) {
+            return Err(AppError::Conflict(
+                "Quiz answers cannot be changed after the correct answer is shown".to_owned(),
+            ));
+        }
+    }
     let inserted = sqlx::query(
         r#"
         INSERT INTO response_events
@@ -2692,7 +2719,7 @@ pub async fn submit_response(
     } else {
         durable_sequence
     };
-    let correct_option_id = (kind == "quiz")
+    let correct_option_id = quiz_answer_disclosed
         .then(|| config.get("correct").and_then(Value::as_str))
         .flatten();
     Ok(Json(json!({
@@ -5345,6 +5372,15 @@ fn require_internal(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quiz_answers_stay_hidden_until_results_are_visible() {
+        let manual = json!({ "results": "manual" });
+        assert!(!audience_can_see_results(&manual, true, false));
+        assert!(audience_can_see_results(&manual, true, true));
+        assert!(!audience_can_see_results(&json!({ "results": "hidden" }), true, true));
+        assert!(audience_can_see_results(&json!({}), true, false));
+    }
 
     #[test]
     fn live_summary_turns_poll_aggregates_into_a_readable_leader() {
