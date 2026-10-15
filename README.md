@@ -6,7 +6,7 @@ Interdeck is a self-hosted presentation app built on [Slidev](https://sli.dev). 
 
 https://github.com/user-attachments/assets/45356e5b-7211-4377-95ba-106013afb89a
 
-[Watch the 40-second film with sound](https://github.com/user-attachments/assets/45356e5b-7211-4377-95ba-106013afb89a).
+[Watch the Interdeck explainer with sound](https://github.com/user-attachments/assets/45356e5b-7211-4377-95ba-106013afb89a).
 
 A 40-second introduction to Markdown authoring, live audience interactions, and optional Gemini assistance. Demo screens and results are illustrative.
 
