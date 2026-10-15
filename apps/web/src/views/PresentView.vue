@@ -41,6 +41,7 @@ const iframeUrl = computed(() => {
   url.searchParams.set('embedded', 'true')
   return `${url.pathname}${url.search}`
 })
+let unmounted = false
 const interactionActionPending = ref(false)
 const inputControlPending = ref(false)
 const qaSettingPending = ref(false)
@@ -82,6 +83,8 @@ onMounted(async () => {
       accessUrl.value = started.url
     }
     await refreshState()
+    // Leaving during the awaits above already ran the unmount cleanup.
+    if (unmounted) return
     if (!consoleOnly.value) windowChannel?.postMessage({ type: 'interdeck:presentation-started' })
     events = new EventSource(`/api/join/${deck.value.join_code}/events`)
     events.onopen = () => { void refreshState() }
@@ -96,6 +99,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  unmounted = true
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('message', onSlidevMessage)
   windowChannel?.removeEventListener('message', onPresenterWindowMessage)

@@ -24,6 +24,8 @@ let privateRefreshTimer: ReturnType<typeof setTimeout> | undefined
 let refreshRequest = 0
 let sharedGeneration = 0
 let disposed = false
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+let reconnectDelay = 1000
 const ownResponses = new Map<string, Record<string, any>>()
 const aiModeration = ref(false)
 
@@ -38,7 +40,7 @@ onMounted(async () => {
   }
   if (joined.value) connect()
 })
-onBeforeUnmount(() => { disposed = true; refreshRequest++; events?.close(); clearTimeout(privateRefreshTimer) })
+onBeforeUnmount(() => { disposed = true; refreshRequest++; events?.close(); clearTimeout(privateRefreshTimer); clearTimeout(reconnectTimer) })
 
 async function joinRoom(anonymous = false) {
   joining.value = true
@@ -86,8 +88,21 @@ function connect() {
   events = new EventSource(`/api/join/${joinCode}/events`)
   events.onopen = () => {
     connection.value = 'connected'
+    reconnectDelay = 1000
   }
-  events.onerror = () => { connection.value = 'offline' }
+  events.onerror = () => {
+    connection.value = 'offline'
+    // The browser retries network drops itself, but a non-stream response
+    // (502 during a deploy, proxy error) closes the stream for good.
+    if (events?.readyState !== EventSource.CLOSED || disposed) return
+    clearTimeout(reconnectTimer)
+    reconnectTimer = setTimeout(() => {
+      if (disposed) return
+      void refresh()
+      connect()
+    }, reconnectDelay + Math.random() * 1000)
+    reconnectDelay = Math.min(reconnectDelay * 2, 30_000)
+  }
   events.addEventListener('state', applyStateEvent)
 }
 

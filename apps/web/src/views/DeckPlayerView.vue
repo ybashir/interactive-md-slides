@@ -88,6 +88,7 @@ const visibleDrawings = computed(() => [
   ...(activeDrawing.value ? [activeDrawing.value] : []),
 ])
 
+let unmounted = false
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('message', onCommand)
@@ -100,12 +101,15 @@ onMounted(async () => {
     if (!deck.value) throw new Error('The deck could not be loaded')
     if (slideNumber.value > deck.value.slides.length) slideNumber.value = deck.value.slides.length || 1
     await refreshLiveState()
+    // Leaving during the awaits above already ran the unmount cleanup.
+    if (unmounted) return
     // The editor preview receives source updates directly and has no audience
     // activity to follow. Only the embedded live presenter needs continuous
     // result refreshes; this avoids a permanent request-per-second tax while
     // somebody is simply editing a deck.
     if (route.query.embedded === 'true') liveTimer = window.setInterval(refreshLiveState, 1000)
     await nextTick()
+    if (unmounted) return
     resizeObserver = new ResizeObserver(updateScale)
     if (viewport.value) resizeObserver.observe(viewport.value)
     updateScale()
@@ -121,6 +125,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  unmounted = true
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('message', onCommand)
   document.removeEventListener('fullscreenchange', onFullscreenChange)
