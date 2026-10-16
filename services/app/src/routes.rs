@@ -1692,7 +1692,7 @@ pub async fn navigate(
     assert_owner(&state.db, deck_id, user.id).await?;
     let run = sqlx::query(
         r#"
-        SELECT r.source_revision, d.markdown
+        SELECT r.id, r.source_revision, d.markdown
         FROM presentation_runs r
         JOIN decks d ON d.id = r.deck_id AND d.version = r.source_revision
         WHERE r.deck_id = $1 AND r.status = 'live'
@@ -1702,6 +1702,7 @@ pub async fn navigate(
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::Conflict("Presentation is not live".to_owned()))?;
+    let run_id: Uuid = run.try_get("id")?;
     let markdown: String = run.try_get("markdown")?;
     let parsed = parse_deck(&markdown).map_err(AppError::BadRequest)?;
     let slide = parsed
@@ -1733,14 +1734,19 @@ pub async fn navigate(
         .into_iter()
         .collect::<Vec<_>>();
 
+    // Only move the run that was validated above, and only while it is still
+    // live: a request that lands after stop or a restart must not rewrite the
+    // state of the next run with slide data from the previous source.
     let sequence: i64 = sqlx::query_scalar(
         r#"
-        UPDATE live_deck_states
+        UPDATE live_deck_states l
         SET slide_key = $1, slide_number = $2, click_step = $3,
             visible_element_interaction_ids = $4,
-            sequence = sequence + 1, updated_at = now()
-        WHERE deck_id = $5
-        RETURNING sequence
+            sequence = l.sequence + 1, updated_at = now()
+        FROM presentation_runs r
+        WHERE l.deck_id = $5 AND l.run_id = $6
+          AND r.id = l.run_id AND r.status = 'live'
+        RETURNING l.sequence
         "#,
     )
     .bind(&slide.key)
@@ -1748,8 +1754,10 @@ pub async fn navigate(
     .bind(request.click_step.max(0))
     .bind(serde_json::to_value(visible_element_interaction_ids).unwrap_or_else(|_| json!([])))
     .bind(deck_id)
-    .fetch_one(&state.db)
-    .await?;
+    .bind(run_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::Conflict("Presentation is not live".to_owned()))?;
     state.notify(deck_id, sequence);
     Ok(Json(json!({ "sequence": sequence, "slide": slide })))
 }
