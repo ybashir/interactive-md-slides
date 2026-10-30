@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@slidev/parser": "52.19.1",
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "echarts": "^6.1.0",
     "markdown-it": "14.3.2",
     "monaco-editor": "^0.56.0",
